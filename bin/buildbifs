@@ -1,0 +1,91 @@
+#!/usr/local/bin/ruby
+
+require 'tmpdir'
+require 'RMagick'
+
+$LOAD_PATH.unshift(File.dirname(__FILE__)+"/../lib/poplib")
+
+require 'mp4_art'
+require 'bif_builder.rb'
+
+def walkDirAddMov dir, mov_files
+  d = Dir.new(dir)
+  d.each do |f|
+    if f[0,1] != '.'
+      df = dir +'/'+ f
+      if File.directory?(df)
+        walkDirAddMov df, mov_files
+      else
+        if f[-3,3].casecmp('mp4') == 0
+          fne = df[0,df.length-4]
+          bf = fne + "-SD.bif"
+          if not File.exists? bf
+            # puts "Adding %s" % df
+            mov_files.push df
+          end
+        end
+      end
+    end
+  end
+end
+
+def main
+  if ARGV.length != 1 then 
+    puts "USAGE: buildbifs start_directory"
+    exit! 
+  end
+  
+  # find all the mp4's that don't have a -SD.bif 
+  # file associated with them
+  mov_files = []
+  dir = File.realpath ARGV[0]
+  walkDirAddMov dir, mov_files
+  puts "*" * 100
+  puts "%s %s" % [Time.now.asctime, '~' * (100 - (Time.now.asctime.length + 1))]
+  puts "=" * 100
+  puts "Make Bifs for %s files" % mov_files.length
+  mov_files.each do |mf|
+    puts "  " + mf
+  end
+  i = 0
+  mov_files.each do |mf|
+    i += 1
+    puts "-" * 100
+    puts "***[ %s ]***" % mf
+    p = (i.to_f/mov_files.count.to_f)*(100.to_f)
+    ps = "=" * 50
+    ps.insert((p.to_i / 2), ("<[%s%%]>" % p.to_i))
+    puts "File %s of %s [%s]" % [i, mov_files.count, ps]
+    
+    mp4art = Poplib::Mp4Art.new(mf)
+    if mp4art.containsArtwork?
+      puts "         Contains image: yes"
+      if mp4art.extractArtwork('320x240!')
+        puts "          Extract image: success"
+      else
+        puts "          Extract image: failed"
+      end
+    else
+      puts "           Contains image: no"
+    end
+    
+    bb = Poplib::BifBuilder.new(mf)
+    puts "\
+   buildbif initialized:----------------------------------------------------------------------------\n\
+             Movie File: %s\n\
+               Bif File: %s\n\
+             Image File: %s\n\
+               Interval: %s\n\
+   Using ffmpeg Version: %s\n" %
+       [bb.movie_path, bb.bif_path, bb.img_path, bb.interval, bb.ffmpeg_version]
+    
+    bb.buildBif !File.exists?(bb.img_path)
+  end
+  
+  rescue RuntimeError => e
+    puts "Failed: \n\t%s" % e
+  else
+    puts "Success."
+end
+
+main
